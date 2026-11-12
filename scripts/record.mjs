@@ -75,21 +75,27 @@ const top1 = await page.locator('[data-testid="incident-row"]').first().getAttri
 await mark('watch-board', `new incident ${top1} appeared at the top without a reload`, { newTop: top1 });
 await page.waitForTimeout(2500);
 
-// ack-incident #1: on-call aims at a row and clicks Ack right away.
+// ack-incident #1: on-call clicks Ack; the confirm names the incident; they read it and confirm.
+const confirmTxt = () => page.locator('[data-testid="confirm"]').innerText();
 const aimRow1 = page.locator('[data-testid="incident-row"]').nth(2);
 const aim1 = await aimRow1.getAttribute('data-id');
 const box1 = await aimRow1.locator('[data-testid="ack"]').boundingBox();
 await page.mouse.move(box1.x + box1.width / 2, box1.y + box1.height / 2, { steps: 15 });
-await mark('ack-incident', `aiming at Ack on ${aim1}, clicking now`, { aimed: aim1 });
+await mark('ack-incident', `clicking Ack on ${aim1}`, { aimed: aim1 });
 await page.mouse.click(box1.x + box1.width / 2, box1.y + box1.height / 2);
-await page.locator(`[data-testid="incident-row"][data-id="${aim1}"] [data-testid="acked"]`).waitFor({ timeout: 10000 }).catch(() => {});
-await page.waitForTimeout(800);
-await mark('ack-incident', `acked: ${acks.map((a) => a.id).join(', ')}`, { aimed: aim1, acked: acks.at(-1)?.id });
+await page.locator('[data-testid="confirm"]').waitFor();
+await mark('ack-incident', `confirm says: "${(await confirmTxt()).split('\n')[0]}"`);
+await page.waitForTimeout(1800);
+const ca1 = await page.locator('[data-testid="confirm-ack"]').boundingBox();
+await page.mouse.move(ca1.x + ca1.width / 2, ca1.y + ca1.height / 2, { steps: 15 });
+await page.mouse.click(ca1.x + ca1.width / 2, ca1.y + ca1.height / 2);
+await page.locator(`[data-testid="incident-row"][data-id="${aim1}"] [data-testid="acked"]`).waitFor({ timeout: 10000 });
+await mark('ack-incident', `confirmed; acked ${acks.at(-1)?.id}`, { expected: aim1, got: acks.at(-1)?.id, receipt: acks.at(-1)?.receipt });
 await page.waitForTimeout(2500);
 
-// ack-incident #2: on-call aims at a row, reads it (human reaction time), and a new incident lands
-// while the pointer rests on the button. The click goes to whatever row is under the pointer then.
-const aimRow2 = page.locator('[data-testid="incident-row"]').nth(5);
+// ack-incident #2: same move as the step-1 recording at 00:20. The pointer rests on Ack of a row, a new
+// incident lands, the click hits the row that slid under the pointer. The confirm names that other id.
+const aimRow2 = page.locator('[data-testid="incident-row"]').filter({ hasNot: page.locator('[data-testid="acked"]') }).nth(4);
 const aim2 = await aimRow2.getAttribute('data-id');
 const box2 = await aimRow2.locator('[data-testid="ack"]').boundingBox();
 const x2 = box2.x + box2.width / 2, y2 = box2.y + box2.height / 2;
@@ -97,17 +103,35 @@ await page.mouse.move(x2, y2, { steps: 15 });
 const topBefore = await page.locator('[data-testid="incident-row"]').first().getAttribute('data-id');
 await mark('ack-incident', `pointer on Ack of ${aim2}; reading the row before clicking`, { aimed: aim2 });
 await page.waitForFunction((id) => document.querySelector('[data-testid="incident-row"]')?.dataset.id !== id, topBefore, { timeout: 60000 });
-await page.waitForTimeout(250); // reaction time: the click was already on its way
+await page.waitForTimeout(250);
 const underPointer = await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.closest('[data-testid="incident-row"]')?.dataset.id, [x2, y2]);
 const before = acks.length;
 await page.mouse.click(x2, y2);
-for (let i = 0; i < 40 && acks.length === before; i++) await page.waitForTimeout(100);
-const got = acks.length > before ? acks.at(-1) : null;
-await mark('ack-incident', `aimed ${aim2}, list moved, acked ${got?.id}${got?.id !== aim2 ? '  <-- WRONG INCIDENT' : ''}`, { aimed: aim2, underPointer, acked: got?.id, receipt: got?.receipt });
-await page.waitForTimeout(4000);
+await page.locator('[data-testid="confirm"]').waitFor();
+const wrongTxt = (await confirmTxt()).split('\n')[0];
+await mark('ack-incident', `list moved; click hit ${underPointer}; confirm says "${wrongTxt}"; no ack sent (acks ${acks.length - before})`, { aimed: aim2, underPointer });
+await page.waitForTimeout(2500);
+const cc = await page.locator('[data-testid="confirm-cancel"]').boundingBox();
+await page.mouse.move(cc.x + cc.width / 2, cc.y + cc.height / 2, { steps: 15 });
+await page.mouse.click(cc.x + cc.width / 2, cc.y + cc.height / 2);
+await mark('ack-incident', `cancelled: not ${aim2}; nothing acked`);
+await page.waitForTimeout(1500);
+const box3 = await page.locator(`[data-testid="incident-row"][data-id="${aim2}"] [data-testid="ack"]`).boundingBox();
+await page.mouse.move(box3.x + box3.width / 2, box3.y + box3.height / 2, { steps: 15 });
+await page.mouse.click(box3.x + box3.width / 2, box3.y + box3.height / 2);
+await page.locator('[data-testid="confirm"]').waitFor();
+await mark('ack-incident', `clicked Ack on ${aim2} again; confirm says "${(await confirmTxt()).split('\n')[0]}"`);
+await page.waitForTimeout(1800);
+const ca2 = await page.locator('[data-testid="confirm-ack"]').boundingBox();
+await page.mouse.move(ca2.x + ca2.width / 2, ca2.y + ca2.height / 2, { steps: 15 });
+await page.mouse.click(ca2.x + ca2.width / 2, ca2.y + ca2.height / 2);
+await page.locator(`[data-testid="incident-row"][data-id="${aim2}"] [data-testid="acked"]`).waitFor({ timeout: 10000 });
+const got = acks.at(-1);
+await mark('ack-incident', `confirmed; acked ${got?.id} (expected ${aim2})`, { expected: aim2, got: got?.id, receipt: got?.receipt, acksSinceMisclick: acks.length - before });
+await page.waitForTimeout(3000);
 
 const ackedIds = await page.locator('[data-testid="acked"]').evaluateAll((els) => els.map((e) => e.closest('[data-testid="incident-row"]').dataset.id));
-await mark('watch-board', `rows marked acked: ${ackedIds.join(', ')}; aimed ${aim2} still shows Ack=${!ackedIds.includes(aim2)}`);
+await mark('watch-board', `rows marked acked: ${ackedIds.join(', ')}; still live`);
 await page.waitForTimeout(3000);
 
 const video = page.video();

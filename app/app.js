@@ -28,7 +28,7 @@ const esc = (s) =>
 
 function rowHtml(i) {
   const ackCell = acked.has(i.id)
-    ? `<span data-testid="acked" class="acked">acked</span>`
+    ? `<button type="button" data-testid="acked" class="acked" title="Already acked">acked</button>`
     : `<button type="button" data-testid="ack" class="ack">Ack</button>`;
   return `<span class="id">${esc(i.id)}</span>
         <span class="sev">${esc(i.severity)}</span>
@@ -70,22 +70,69 @@ function render(incidents) {
 
 let latest = [];
 
-// R2: Ack calls api.ack(id) and marks the row acked.
-list.addEventListener('click', async (e) => {
-  const btn = e.target.closest('[data-testid="ack"]');
-  if (!btn) return;
-  const id = btn.closest('[data-testid="incident-row"]').dataset.id;
-  btn.disabled = true;
-  btn.textContent = 'Acking…';
+// R2 + product decision (step 2): Ack asks to confirm, and the confirm names the incident id.
+// The id is taken from the row at click time and kept in the confirm, so a list that moves while the
+// confirm is open cannot change which incident gets acked.
+const confirmBox = document.querySelector('[data-testid="confirm"]');
+const confirmText = confirmBox.querySelector('.confirm-text');
+const confirmAck = confirmBox.querySelector('[data-testid="confirm-ack"]');
+const confirmCancel = confirmBox.querySelector('[data-testid="confirm-cancel"]');
+let pending = null; // incident id the open confirm names
+
+function incidentById(id) {
+  return latest.find((i) => i.id === id);
+}
+
+function openConfirm(id) {
+  const i = incidentById(id);
+  pending = id;
+  if (acked.has(id)) {
+    confirmText.textContent = `${id} is already acked. Nothing to ack.`;
+    confirmAck.hidden = true;
+    confirmCancel.textContent = 'Close';
+  } else {
+    confirmText.textContent = `Ack ${id}${i ? ` (${i.severity} · ${i.service} · ${i.summary})` : ''}?`;
+    confirmAck.hidden = false;
+    confirmAck.disabled = false;
+    confirmAck.textContent = `Ack ${id}`;
+    confirmCancel.textContent = 'Cancel';
+  }
+  confirmBox.hidden = false;
+  (confirmAck.hidden ? confirmCancel : confirmAck).focus();
+}
+
+function closeConfirm() {
+  pending = null;
+  confirmBox.hidden = true;
+}
+
+list.addEventListener('click', (e) => {
+  const hit = e.target.closest('[data-testid="ack"], [data-testid="acked"]');
+  if (!hit) return;
+  const id = hit.closest('[data-testid="incident-row"]').dataset.id;
+  openConfirm(id);
+});
+
+confirmCancel.addEventListener('click', closeConfirm);
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !confirmBox.hidden) closeConfirm();
+});
+
+confirmAck.addEventListener('click', async () => {
+  const id = pending;
+  if (!id || acked.has(id)) return closeConfirm();
+  confirmAck.disabled = true;
+  confirmAck.textContent = `Acking ${id}…`;
   try {
     const reply = await ack(id);
     acked.set(id, reply.ackedAt);
+    closeConfirm();
     render(latest);
   } catch (err) {
     console.error(err);
-    btn.disabled = false;
-    btn.textContent = 'Ack';
-    btn.title = String(err.message || err);
+    confirmText.textContent = `Could not ack ${id}: ${err.message || err}`;
+    confirmAck.disabled = false;
+    confirmAck.textContent = `Retry ack ${id}`;
   }
 });
 
