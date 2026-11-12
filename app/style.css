@@ -9,3 +9,13 @@ h1 { margin: 0; font-size: 22px; }
 .row.sev2 .sev { color: #a15c00; }
 .row time { color: #555; font-variant-numeric: tabular-nums; }
 footer { color: #777; font-size: 13px; }
+.row { grid-template-columns: 90px 50px 1fr 170px 80px; transition: background-color 1.2s; }
+.row.new { background: #fff6cc; }
+.row .act { text-align: right; }
+.ack { font: inherit; padding: 4px 12px; border: 1px solid #888; border-radius: 6px; background: #fff; cursor: pointer; }
+.ack:hover { background: #f0f0f0; }
+.acked { color: #1a7f37; font-weight: 600; }
+.loader { color: #666; }
+.loader::before { content: ''; display: inline-block; width: 12px; height: 12px; margin-right: 8px; border: 2px solid #ccc; border-top-color: #333; border-radius: 50%; animation: spin .8s linear infinite; vertical-align: -2px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.empty { color: #666; }
